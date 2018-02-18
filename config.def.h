@@ -5,8 +5,8 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-char font[] = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
-int borderpx = 2;
+char font[] = "DejaVu Sans Mono:size=12:antialias=true:autohint=true";
+int borderpx = 0;
 
 /*
  * What program is execed by st depends of these precedence rules:
