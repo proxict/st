@@ -162,6 +162,12 @@ MouseShortcut mshortcuts[] = {
 	{ Button5,              XK_ANY_MOD,     "\005" },
 };
 
+MouseKey mkeys[] = {
+	/* button               mask            function        argument */
+	{ Button4,              XK_NO_MOD,      kscrollup,      {.i =  1} },
+	{ Button5,              XK_NO_MOD,      kscrolldown,    {.i =  1} },
+};
+
 /* Internal keyboard shortcuts. */
 #define MODKEY Mod1Mask
 #define TERMMOD (ControlMask|ShiftMask)
