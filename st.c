@@ -60,7 +60,7 @@ char *argv0;
 #define ISDELIM(u)		(utf8strchr(worddelimiters, u) != NULL)
 
 /* constants */
-#define ISO14755CMD		"dmenu -w %lu -p codepoint: </dev/null"
+#define ISO14755CMD		"dmenu -p codepoint: </dev/null"
 
 enum cursor_movement {
 	CURSOR_SAVE,
@@ -2049,14 +2049,11 @@ tprinter(char *s, size_t len)
 void
 iso14755(const Arg *arg)
 {
-	unsigned long id = xwinid();
-	char cmd[sizeof(ISO14755CMD) + NUMMAXLEN(id)];
 	FILE *p;
 	char *us, *e, codepoint[9], uc[UTF_SIZ];
 	unsigned long utf32;
 
-	snprintf(cmd, sizeof(cmd), ISO14755CMD, id);
-	if (!(p = popen(cmd, "r")))
+	if (!(p = popen(ISO14755CMD, "r")))
 		return;
 
 	us = fgets(codepoint, sizeof(codepoint), p);
