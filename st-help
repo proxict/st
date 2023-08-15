@@ -1,0 +1,3 @@
+#!/bin/sh
+# Using external pipe with st, show list of shortcuts in dmenu
+dmenu -p "st shortcuts:" -i -l 10 >/dev/null 2>&1

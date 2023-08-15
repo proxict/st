@@ -251,29 +251,31 @@ static MouseShortcut mshortcuts[] = {
 static char *openurlcmd[] = { "/bin/sh", "-c", "st-urlhandler -o", "externalpipe", NULL };
 static char *copyurlcmd[] = { "/bin/sh", "-c", "st-urlhandler -c", "externalpipe", NULL };
 static char *copyoutput[] = { "/bin/sh", "-c", "st-copyout", "externalpipe", NULL };
+static char *sthelpcmd[] = { "/bin/sh", "-c", "st-help", "externalpipe", NULL };
 
 static Shortcut shortcuts[] = {
-	/* mask                 keysym          function        argument */
-	{ XK_ANY_MOD,           XK_Break,       sendbreak,      {.i =  0} },
-	{ ControlMask,          XK_Print,       toggleprinter,  {.i =  0} },
-	{ ShiftMask,            XK_Print,       printscreen,    {.i =  0} },
-	{ XK_ANY_MOD,           XK_Print,       printsel,       {.i =  0} },
-	{ TERMMOD,              XK_L,           zoom,           {.f = +1} },
-	{ TERMMOD,              XK_H,           zoom,           {.f = -1} },
-	{ TERMMOD,              XK_R,           zoomreset,      {.f =  0} },
-	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
-	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
-	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
-	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
-	{ TERMMOD,              XK_K,           kscrollup,      {.i = 1} },
-	{ TERMMOD,              XK_J,           kscrolldown,    {.i = 1} },
-	{ ShiftMask,            XK_Up,          kscrollup,      {.i = 1} },
-	{ ShiftMask,            XK_Down,        kscrolldown,    {.i = 1} },
-	{ ShiftMask,            XK_Page_Up,     kscrollup,      {.i = -1} },
-	{ ShiftMask,            XK_Page_Down,   kscrolldown,    {.i = -1} },
-	{ TERMMOD,              XK_F,           externalpipe,   {.v = openurlcmd } },
-	{ TERMMOD,              XK_U,           externalpipe,   {.v = copyurlcmd } },
-	{ TERMMOD,              XK_O,           externalpipe,   {.v = copyoutput } },
+	/* mask                 keysym          description                                  function        argument */
+	{ XK_ANY_MOD,           XK_Break,       NULL,                                        sendbreak,      {.i =  0} },
+	{ ControlMask,          XK_Print,       NULL,                                        toggleprinter,  {.i =  0} },
+	{ ShiftMask,            XK_Print,       NULL,                                        printscreen,    {.i =  0} },
+	{ XK_ANY_MOD,           XK_Print,       NULL,                                        printsel,       {.i =  0} },
+	{ TERMMOD,              XK_L,           "Increases font size",                       zoom,           {.f = +1} },
+	{ TERMMOD,              XK_H,           "Decreases font size",                       zoom,           {.f = -1} },
+	{ TERMMOD,              XK_R,           "Resets font size",                          zoomreset,      {.f =  0} },
+	{ TERMMOD,              XK_C,           "Copy selection to clipboard",               clipcopy,       {.i =  0} },
+	{ TERMMOD,              XK_V,           "Pastes content from secondary clipboard",   clippaste,      {.i =  0} },
+	{ TERMMOD,              XK_Y,           "Pastes content from primary clipboard",     selpaste,       {.i =  0} },
+	{ TERMMOD,              XK_Num_Lock,    NULL,                                        numlock,        {.i =  0} },
+	{ TERMMOD,              XK_K,           "Scroll up by one row",                      kscrollup,      {.i = 1} },
+	{ TERMMOD,              XK_J,           "Scroll down by one row",                    kscrolldown,    {.i = 1} },
+	{ ShiftMask,            XK_Up,          "Scroll up by one row",                      kscrollup,      {.i = 1} },
+	{ ShiftMask,            XK_Down,        "Scroll down by one row",                    kscrolldown,    {.i = 1} },
+	{ ShiftMask,            XK_Page_Up,     "Scroll up by one page",                     kscrollup,      {.i = -1} },
+	{ ShiftMask,            XK_Page_Down,   "Scroll down by one page",                   kscrolldown,    {.i = -1} },
+	{ TERMMOD,              XK_F,           "Follow a URL from the buffer",              externalpipe,   {.v = openurlcmd } },
+	{ TERMMOD,              XK_U,           "Copy a URL from the buffer",                externalpipe,   {.v = copyurlcmd } },
+	{ TERMMOD,              XK_O,           "Copy the output of a command",              externalpipe,   {.v = copyoutput } },
+	{ TERMMOD,              XK_question,    "Show help message",                         sthelp,         {.v = sthelpcmd } },
 };
 
 /*

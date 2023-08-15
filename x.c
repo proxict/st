@@ -26,6 +26,7 @@ char *argv0;
 typedef struct {
 	uint mod;
 	KeySym keysym;
+	const char* description;
 	void (*func)(const Arg *);
 	const Arg arg;
 } Shortcut;
@@ -75,6 +76,7 @@ static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
 static void ttysend(const Arg *);
+static void sthelp(const Arg *);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
@@ -364,6 +366,74 @@ void
 ttysend(const Arg *arg)
 {
 	ttywrite(arg->s, strlen(arg->s), 1);
+}
+
+void
+sthelp(const Arg *arg)
+{
+	int to[2];
+	void (*oldsigpipe)(int);
+	Shortcut *bp;
+    const char* ksname;
+
+	if (pipe(to) == -1)
+		return;
+
+	switch (fork()) {
+	case -1:
+		close(to[0]);
+		close(to[1]);
+		return;
+	case 0:
+		dup2(to[0], STDIN_FILENO);
+		close(to[0]);
+		close(to[1]);
+		execvp(((char **)arg->v)[0], (char **)arg->v);
+		fprintf(stderr, "st: execvp %s\n", ((char **)arg->v)[0]);
+		perror("failed");
+		exit(0);
+	}
+
+	close(to[0]);
+	/* ignore sigpipe for now, in case child exists early */
+	oldsigpipe = signal(SIGPIPE, SIG_IGN);
+
+    FILE* to_fd = fdopen(dup(to[1]), "w");
+	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
+        if (bp->description) {
+            if (bp->keysym == XK_question) {
+                ksname = "?";
+            } else if (!(ksname = XKeysymToString(bp->keysym))) {
+                ksname = "(unknown)";
+            }
+            const char *anymask = "", *shiftmask = "", *lockmask = "", *ctrlmask = "", *mod1mask = "", *mod2mask = "", *mod3mask = "", *mod4mask = "", *mod5mask = "";
+            if (bp->mod == XK_ANY_MOD) {
+                anymask = " <any-mod> + ";
+            } else if (bp->mod != XK_NO_MOD) {
+                if (bp->mod & ShiftMask)
+                    shiftmask = "Shift + ";
+                if (bp->mod & LockMask)
+                    lockmask = "Lock + ";
+                if (bp->mod & ControlMask)
+                    ctrlmask = "Ctrl + ";
+                if (bp->mod & Mod1Mask)
+                    mod1mask = "Mod1 + ";
+                if (bp->mod & Mod2Mask)
+                    mod2mask = "Mod2 + ";
+                if (bp->mod & Mod3Mask)
+                    mod3mask = "Mod3 + ";
+                if (bp->mod & Mod4Mask)
+                    mod4mask = "Mod4 + ";
+                if (bp->mod & Mod5Mask)
+                    mod5mask = "Mod5 + ";
+            }
+            fprintf(to_fd, "%s%s%s%s%s%s%s%s%s%s => %s\n", anymask, shiftmask, lockmask, ctrlmask, mod1mask, mod2mask, mod3mask, mod4mask, mod5mask, ksname, bp->description);
+        }
+	}
+    fclose(to_fd);
+	close(to[1]);
+	/* restore */
+	signal(SIGPIPE, oldsigpipe);
 }
 
 int
