@@ -7,7 +7,7 @@
  */
 //static char *font = "mono:pixelsize=12:antialias=true:autohint=true";
 static char* font = "DejaVuSansM Nerd Font:size=12:antialias=true:autohint=true";
-static char *font2[] = { "NotoColorEmoji:pixelsize=10:antialias=true:autohint=true" };
+static char *font2[] = { "DejaVu Sans:style=Oblique:size=12:antialias=true:autohint=true" };
 static int borderpx = 0;
 
 /*
