@@ -2724,6 +2724,14 @@ kmap(KeySym k, uint state)
 	return NULL;
 }
 
+void toggle_winmode(int flag) {
+	win.mode ^= flag;
+}
+
+void keyboard_select(const Arg *dummy) {
+	win.mode ^= trt_kbdselect(-1, NULL, 0);
+}
+
 void
 kpress(XEvent *ev)
 {
@@ -2760,6 +2768,12 @@ reallocbuf:
 		// but at least it does write something into the buffer
 		// so it is not as critical
 		len = XLookupString(e, buf, buf_size, &ksym, NULL);
+	}
+	if (IS_SET(MODE_KBDSELECT)) {
+		if (match(XK_NO_MOD, e->state) ||
+		     (XK_Shift_L | XK_Shift_R) & e->state)
+			win.mode ^= trt_kbdselect(ksym, buf, len);
+		return;
 	}
 	/* 1. shortcuts */
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
