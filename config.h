@@ -300,6 +300,7 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_U,           "Copy a URL from the buffer",                externalpipe,   {.v = copyurlcmd } },
 	{ TERMMOD,              XK_O,           "Copy the output of a command",              externalpipe,   {.v = copyoutput } },
 	{ TERMMOD,              XK_question,    "Show help message",                         sthelp,         {.v = sthelpcmd } },
+	{ TERMMOD,              XK_Q,           "Keyboard selection",                        keyboard_select,{.i =  0} },
 };
 
 /*
