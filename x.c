@@ -4,6 +4,8 @@
 #include <limits.h>
 #include <locale.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/select.h>
 #include <time.h>
 #include <unistd.h>
@@ -21,6 +23,7 @@ char *argv0;
 #include "st.h"
 #include "win.h"
 #include "hb.h"
+#include "graphics.h"
 
 /* types used in config.h */
 typedef struct {
@@ -86,6 +89,12 @@ static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
 static void ttysend(const Arg *);
 static void sthelp(const Arg *);
+static void previewimage(const Arg *);
+static void showimageinfo(const Arg *);
+static void togglegrdebug(const Arg *);
+static void dumpgrstate(const Arg *);
+static void unloadimages(const Arg *);
+static void toggleimages(const Arg *);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
@@ -173,6 +182,8 @@ static inline ushort sixd_to_16bit(int);
 static int xmakeglyphfontspecs(XftGlyphFontSpec *, const Glyph *, int, int, int);
 static void xdrawglyphfontspecs(const XftGlyphFontSpec *, Glyph, int, int, int, int);
 static void xdrawglyph(Glyph, int, int);
+static void xdrawimages(Glyph, Line, int x1, int y1, int x2);
+static void xdrawoneimagecell(Glyph, int x, int y);
 static void xclear(int, int, int, int);
 static int xgeommasktogravity(int);
 static int ximopen(Display *);
@@ -252,6 +263,7 @@ static DC dc;
 static XWindow xw;
 static XSelection xsel;
 static TermWindow win;
+static unsigned int mouse_col = 0, mouse_row = 0;
 
 /* Font Ring Cache */
 enum {
@@ -445,6 +457,68 @@ sthelp(const Arg *arg)
 	signal(SIGPIPE, oldsigpipe);
 }
 
+void
+previewimage(const Arg *arg)
+{
+	Glyph g = getglyphat(mouse_col, mouse_row);
+	if (g.mode & ATTR_IMAGE) {
+		uint32_t image_id = tgetimgid(&g);
+		fprintf(stderr, "Clicked on placeholder %u/%u, x=%d, y=%d\n",
+			image_id, tgetimgplacementid(&g), tgetimgcol(&g),
+			tgetimgrow(&g));
+		gr_preview_image(image_id, arg->s);
+	}
+}
+
+void
+showimageinfo(const Arg *arg)
+{
+	Glyph g = getglyphat(mouse_col, mouse_row);
+	if (g.mode & ATTR_IMAGE) {
+		uint32_t image_id = tgetimgid(&g);
+		fprintf(stderr, "Clicked on placeholder %u/%u, x=%d, y=%d\n",
+			image_id, tgetimgplacementid(&g), tgetimgcol(&g),
+			tgetimgrow(&g));
+		char stcommand[256] = {0};
+		size_t len = snprintf(stcommand, sizeof(stcommand), "%s -e less", argv0);
+		if (len > sizeof(stcommand) - 1) {
+			fprintf(stderr, "Executable name too long: %s\n",
+				argv0);
+			return;
+		}
+		gr_show_image_info(image_id, tgetimgplacementid(&g),
+				   tgetimgcol(&g), tgetimgrow(&g),
+				   tgetisclassicplaceholder(&g),
+				   tgetimgdiacriticcount(&g), argv0);
+	}
+}
+
+void
+togglegrdebug(const Arg *arg)
+{
+	graphics_debug_mode = (graphics_debug_mode + 1) % 3;
+	redraw();
+}
+
+void
+dumpgrstate(const Arg *arg)
+{
+	gr_dump_state();
+}
+
+void
+unloadimages(const Arg *arg)
+{
+	gr_unload_images_to_reduce_ram();
+}
+
+void
+toggleimages(const Arg *arg)
+{
+	graphics_display_images = !graphics_display_images;
+	redraw();
+}
+
 int
 evcol(XEvent *e)
 {
@@ -568,6 +642,8 @@ mouseaction(XEvent *e, uint release)
 
 	/* ignore Button<N>mask for Button<N> - it's set on release */
 	uint state = e->xbutton.state & ~buttonmask(e->xbutton.button);
+	mouse_col = evcol(e);
+	mouse_row = evrow(e);
 
 	for (ms = mshortcuts; ms < mshortcuts + LEN(mshortcuts); ms++) {
 		if (ms->release == release &&
@@ -1143,7 +1219,8 @@ xloadfonts(const char *fontstr, double fontsize)
 			FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
 			usedfontsize = 12;
 		}
-		defaultfontsize = usedfontsize;
+		if (defaultfontsize <= 0)
+			defaultfontsize = usedfontsize;
 	}
 
 	if (xloadfont(&dc.font, pattern))
@@ -1153,7 +1230,7 @@ xloadfonts(const char *fontstr, double fontsize)
 		FcPatternGetDouble(dc.font.match->pattern,
 		                   FC_PIXEL_SIZE, 0, &fontval);
 		usedfontsize = fontval;
-		if (fontsize == 0)
+		if (defaultfontsize <= 0 && fontsize == 0)
 			defaultfontsize = fontval;
 	}
 
@@ -1476,6 +1553,9 @@ xinit(int cols, int rows)
 		xsel.xtarget = XA_STRING;
 
 	boxdraw_xinit(xw.dpy, xw.cmap, xw.draw, xw.vis);
+
+	// Initialize the graphics (image display) module.
+	gr_init(xw.dpy, xw.vis, xw.cmap);
 }
 
 int
@@ -1502,6 +1582,11 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 		/* Skip dummy wide-character spacing. */
 		if (mode & ATTR_WDUMMY)
 			continue;
+
+		/* Draw spaces for image placeholders (images will be drawn
+		 * separately). */
+		if (mode & ATTR_IMAGE)
+			rune = ' ';
 
 		/* Determine font for glyph if different from previous glyph. */
 		if (prevmode != mode) {
@@ -2156,6 +2241,11 @@ xdrawglyph(Glyph g, int x, int y)
 
 	numspecs = xmakeglyphfontspecs(&spec, &g, 1, x, y);
 	xdrawglyphfontspecs(&spec, g, numspecs, x, y, DRAW_BG | DRAW_FG);
+	if (g.mode & ATTR_IMAGE) {
+		gr_start_drawing(xw.buf, win.cw, win.ch);
+		xdrawoneimagecell(g, x, y);
+		gr_finish_drawing(xw.buf);
+	}
 }
 
 void
@@ -2173,6 +2263,10 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og, Line line, int le
 
 	if (IS_SET(MODE_HIDE))
 		return;
+
+	// If it's an image, just draw a ballot box for simplicity.
+	if (g.mode & ATTR_IMAGE)
+		g.u = 0x2610;
 
 	/*
 	 * Select the right color for the right mode.
@@ -2247,6 +2341,134 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og, Line line, int le
 	}
 }
 
+/* Draw (or queue for drawing) image cells between columns x1 and x2 assuming
+ * that they have the same attributes (and thus the same lower 24 bits of the
+ * image ID and the same placement ID). */
+void
+xdrawimages(Glyph base, Line line, int x1, int y1, int x2) {
+	int y_pix = borderpx + y1 * win.ch;
+	uint32_t image_id_24bits = base.fg & 0xFFFFFF;
+	uint32_t placement_id = tgetimgplacementid(&base);
+	// Columns and rows are 1-based, 0 means unspecified.
+	int last_col = 0;
+	int last_row = 0;
+	int last_start_col = 0;
+	int last_start_x = x1;
+	// The most significant byte is also 1-base, subtract 1 before use.
+	uint32_t last_id_4thbyteplus1 = 0;
+	// We may need to inherit row/column/4th byte from the previous cell.
+	Glyph *prev = &line[x1 - 1];
+	if (x1 > 0 && (prev->mode & ATTR_IMAGE) &&
+	    (prev->fg & 0xFFFFFF) == image_id_24bits &&
+	    prev->decor == base.decor) {
+		last_row = tgetimgrow(prev);
+		last_col = tgetimgcol(prev);
+		last_id_4thbyteplus1 = tgetimgid4thbyteplus1(prev);
+		last_start_col = last_col + 1;
+	}
+	for (int x = x1; x < x2; ++x) {
+		Glyph *g = &line[x];
+		uint32_t cur_row = tgetimgrow(g);
+		uint32_t cur_col = tgetimgcol(g);
+		uint32_t cur_id_4thbyteplus1 = tgetimgid4thbyteplus1(g);
+		uint32_t num_diacritics = tgetimgdiacriticcount(g);
+		// If the row is not specified, assume it's the same as the row
+		// of the previous cell. Note that `cur_row` may contain a
+		// value imputed earlier, which will be preserved if `last_row`
+		// is zero (i.e. we don't know the row of the previous cell).
+		if (last_row && (num_diacritics == 0 || !cur_row))
+			cur_row = last_row;
+		// If the column is not specified and the row is the same as the
+		// row of the previous cell, then assume that the column is the
+		// next one.
+		if (last_col && (num_diacritics <= 1 || !cur_col) &&
+		    cur_row == last_row)
+			cur_col = last_col + 1;
+		// If the additional id byte is not specified and the
+		// coordinates are consecutive, assume the byte is also the
+		// same.
+		if (last_id_4thbyteplus1 &&
+		    (num_diacritics <= 2 || !cur_id_4thbyteplus1) &&
+		    cur_row == last_row && cur_col == last_col + 1)
+			cur_id_4thbyteplus1 = last_id_4thbyteplus1;
+		// If we couldn't infer row and column, start from the top left
+		// corner.
+		if (cur_row == 0)
+			cur_row = 1;
+		if (cur_col == 0)
+			cur_col = 1;
+		// If this cell breaks a contiguous stripe of image cells, draw
+		// that line and start a new one.
+		if (cur_col != last_col + 1 || cur_row != last_row ||
+		    cur_id_4thbyteplus1 != last_id_4thbyteplus1) {
+			uint32_t image_id = image_id_24bits;
+			if (last_id_4thbyteplus1)
+				image_id |= (last_id_4thbyteplus1 - 1) << 24;
+			if (last_row != 0) {
+				int x_pix =
+					borderpx + last_start_x * win.cw;
+				gr_append_imagerect(
+					xw.buf, image_id, placement_id,
+					last_start_col - 1, last_col,
+					last_row - 1, last_row, last_start_x,
+					y1, x_pix, y_pix, win.cw, win.ch,
+					base.mode & ATTR_REVERSE);
+			}
+			last_start_col = cur_col;
+			last_start_x = x;
+		}
+		last_row = cur_row;
+		last_col = cur_col;
+		last_id_4thbyteplus1 = cur_id_4thbyteplus1;
+		// Populate the missing glyph data to enable inheritance between
+		// runs and support the naive implementation of tgetimgid.
+		if (!tgetimgrow(g))
+			tsetimgrow(g, cur_row);
+		// We cannot save this information if there are > 511 cols.
+		if (!tgetimgcol(g) && (cur_col & ~0x1ff) == 0)
+			tsetimgcol(g, cur_col);
+		if (!tgetimgid4thbyteplus1(g))
+			tsetimg4thbyteplus1(g, cur_id_4thbyteplus1);
+	}
+	uint32_t image_id = image_id_24bits;
+	if (last_id_4thbyteplus1)
+		image_id |= (last_id_4thbyteplus1 - 1) << 24;
+	// Draw the last contiguous stripe.
+	if (last_row != 0) {
+		int x_pix = borderpx + last_start_x * win.cw;
+		gr_append_imagerect(xw.buf, image_id, placement_id,
+				    last_start_col - 1, last_col, last_row - 1,
+				    last_row, last_start_x, y1, x_pix, y_pix,
+				    win.cw, win.ch, base.mode & ATTR_REVERSE);
+	}
+}
+
+/* Draw just one image cell without inheriting attributes from the left. */
+void xdrawoneimagecell(Glyph g, int x, int y) {
+	if (!(g.mode & ATTR_IMAGE))
+		return;
+	int x_pix = borderpx + x * win.cw;
+	int y_pix = borderpx + y * win.ch;
+	uint32_t row = tgetimgrow(&g) - 1;
+	uint32_t col = tgetimgcol(&g) - 1;
+	uint32_t placement_id = tgetimgplacementid(&g);
+	uint32_t image_id = tgetimgid(&g);
+	gr_append_imagerect(xw.buf, image_id, placement_id, col, col + 1, row,
+			    row + 1, x, y, x_pix, y_pix, win.cw, win.ch,
+			    g.mode & ATTR_REVERSE);
+}
+
+/* Prepare for image drawing. */
+void xstartimagedraw(int *dirty, int rows) {
+	gr_start_drawing(xw.buf, win.cw, win.ch);
+	gr_mark_dirty_animations(dirty, rows);
+}
+
+/* Draw all queued image cells. */
+void xfinishimagedraw() {
+	gr_finish_drawing(xw.buf);
+}
+
 void
 xsetenv(void)
 {
@@ -2262,6 +2484,9 @@ xseticontitle(char *p)
 	XTextProperty prop;
 	DEFAULT(p, opt_title);
 
+	if (p[0] == '\0')
+		p = opt_title;
+
 	if (Xutf8TextListToTextProperty(xw.dpy, &p, 1, XUTF8StringStyle,
 	                                &prop) != Success)
 		return;
@@ -2275,6 +2500,9 @@ xsettitle(char *p)
 {
 	XTextProperty prop;
 	DEFAULT(p, opt_title);
+
+	if (p[0] == '\0')
+		p = opt_title;
 
 	if (Xutf8TextListToTextProperty(xw.dpy, &p, 1, XUTF8StringStyle,
 	                                &prop) != Success)
@@ -2313,6 +2541,8 @@ xdrawline(Line line, int x1, int y1, int x2)
 				new.mode ^= ATTR_REVERSE;
 			if (i > 0 && ATTRCMP(base, new)) {
 				xdrawglyphfontspecs(specs, base, i, ox, y1, dmode);
+                if (base.mode & ATTR_IMAGE)
+                    xdrawimages(base, line, ox, y1, x);
 				specs += i;
 				numspecs -= i;
 				i = 0;
@@ -2323,9 +2553,12 @@ xdrawline(Line line, int x1, int y1, int x2)
 			}
 			i++;
 		}
-		if (i > 0)
+		if (i > 0) {
 			xdrawglyphfontspecs(specs, base, i, ox, y1, dmode);
+        }
 	}
+    if (i > 0 && base.mode & ATTR_IMAGE)
+        xdrawimages(base, line, ox, y1, x);
 }
 
 void
@@ -2580,6 +2813,7 @@ cmessage(XEvent *e)
 		}
 	} else if (e->xclient.data.l[0] == xw.wmdeletewin) {
 		ttyhangup();
+		gr_deinit();
 		exit(0);
 	}
 }
@@ -2629,6 +2863,14 @@ run(void)
 
 		if (XPending(xw.dpy))
 			timeout = 0;  /* existing events might not set xfd */
+
+		/* Decrease the timeout if there are active animations. */
+		if (graphics_next_redraw_delay != INT_MAX &&
+		    IS_SET(MODE_VISIBLE))
+			timeout = timeout < 0 ? graphics_next_redraw_delay
+					      : MIN(timeout,
+						    graphics_next_redraw_delay);
+
 
 		seltv.tv_sec = timeout / 1E3;
 		seltv.tv_nsec = 1E6 * (timeout - 1E3 * seltv.tv_sec);
